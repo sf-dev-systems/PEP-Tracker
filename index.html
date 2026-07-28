@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>My PEP Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="PEP Tracker" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @font-face {
+    font-family: 'SF Rounded Fallback';
+    src: local('SF Pro Rounded'), local('SFRounded-Regular');
+  }
+  :root {
+    --ink: #23303A; --paper: #F5F2EA; --paper-raised: #FBFAF6;
+    --sage: #7C9A82; --sage-deep: #5C7A63; --dawn: #E8A33D; --dusk: #4A5C6A;
+    --line: #D9D3C4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #EDE9DE; --paper: #1B232B; --paper-raised: #232E37;
+      --sage: #8FB097; --sage-deep: #6E9377; --dawn: #F0B25C; --dusk: #9FB2C0; --line: #33404A; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: ui-rounded, 'SF Rounded Fallback', -apple-system, 'Segoe UI', system-ui, sans-serif;
+    color: var(--ink);
+    background: radial-gradient(120% 90% at 50% -10%, color-mix(in srgb, var(--dusk) 12%, transparent), transparent), var(--paper);
+    min-height: 100vh;
+    padding: 28px 18px 60px;
+  }
+  .meta-font { font-family: -apple-system, 'Segoe UI', system-ui, sans-serif; }
+  .wrap { max-width: 420px; margin: 0 auto; }
+
+  /* --- header, matches mockups/gia-app-mockup.html .today-header --- */
+  .today-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+  .today-header h1 { font-size: 26px; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+  .today-header p { margin: 2px 0 0; font-size: 13px; color: var(--dusk); }
+  .today-badge {
+    display: flex; flex-direction: column; align-items: center;
+    background: color-mix(in srgb, var(--sage) 18%, var(--paper-raised));
+    border: 1px solid color-mix(in srgb, var(--sage) 45%, transparent);
+    border-radius: 18px; padding: 8px 14px; min-width: 62px;
+  }
+  .today-badge .n { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--sage-deep); line-height: 1; }
+  .today-badge .u { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dusk); margin-top: 3px; }
+
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--dusk); margin: 18px 0 8px; }
+
+  /* --- shot grid, matches mockup .shot-grid: rows = compounds, columns = days --- */
+  .shot-grid { display: grid; grid-template-columns: 58px repeat(var(--days, 12), 1fr); gap: 6px 3px; align-items: center; padding-bottom: 4px; }
+  .shot-grid .col-head { font-size: 9px; font-weight: 700; color: var(--dusk); text-align: center; }
+  .shot-grid .row-label { font-size: 12px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+  .shot-cell { width: 20px; height: 20px; line-height: 17px; text-align: center; border-radius: 50%; font-size: 11px; justify-self: center; }
+  .shot-cell.done { background: var(--sage-deep); color: var(--paper-raised); }
+  .shot-cell.missed { border: 1.5px solid var(--line); color: var(--line); }
+  .shot-cell.na { color: var(--line); font-size: 12px; }
+  .shot-cell.today-pending { border: 2px dashed var(--dawn); cursor: pointer; }
+  .shot-cell.today-done { background: var(--sage-deep); color: var(--paper-raised); cursor: pointer; }
+
+  /* --- today's checklist cards, tappable --- */
+  .today-cards { margin-top: 8px; }
+  .card {
+    display: flex; align-items: center; gap: 14px; background: var(--paper-raised);
+    border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; margin-bottom: 10px;
+    cursor: pointer; user-select: none;
+  }
+  .card .mark {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    border: 2px dashed var(--line); display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; color: var(--line);
+  }
+  .card.done .mark { border-style: solid; border-color: var(--sage-deep); background: var(--sage-deep); color: var(--paper-raised); }
+  .card .name { font-weight: 700; font-size: 1.02rem; }
+  .card .sub { font-size: 0.78rem; color: var(--dusk); margin-top: 2px; }
+
+  /* --- pin gate --- */
+  h2 { font-size: 1.1rem; }
+  input, button { font-size: 1rem; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); font-family: inherit; }
+  #pinForm { display: flex; gap: 8px; margin-top: 12px; }
+  #pinForm input { flex: 1; }
+  button { background: var(--sage-deep); color: var(--paper-raised); border: none; cursor: pointer; font-weight: 700; }
+  #app { display: none; }
+  #logoutBar { text-align: right; font-size: 0.8rem; margin-bottom: 12px; }
+  #logoutBar a { color: var(--dusk); cursor: pointer; }
+  .status { font-size: 0.85rem; margin-top: 6px; min-height: 1.2em; }
+  .status.ok { color: #1a7f37; } .status.err { color: #c0392b; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div id="login">
+  <div class="today-header"><div><h1>My PEP Tracker</h1><p class="meta-font">Enter your PIN</p></div></div>
+  <form id="pinForm">
+    <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" required />
+    <button type="submit">Unlock</button>
+  </form>
+  <div id="pinStatus" class="status meta-font"></div>
+</div>
+
+<div id="app">
+  <div id="logoutBar" class="meta-font"><a id="logoutLink">Not you? Re-enter PIN</a></div>
+
+  <div class="today-header">
+    <div>
+      <h1>Today</h1>
+      <p id="todayLabel"></p>
+    </div>
+    <div class="today-badge">
+      <span class="n" id="todayCount">0/0</span>
+      <span class="u">today</span>
+    </div>
+  </div>
+
+  <div class="section-label">Your shots — last 12 days</div>
+  <div class="shot-grid" id="shotGrid" style="--days: 12;"></div>
+  <div id="gridStatus" class="status meta-font"></div>
+
+  <div class="section-label">Tap to mark done</div>
+  <div class="today-cards" id="todayCards"></div>
+  <div id="checklistStatus" class="status meta-font"></div>
+</div>
+
+</div>
+
+<script>
+  const SUPABASE_URL = "https://ydyfwfopwrmtsfvrruvl.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_kfJegG0GOh2C4K3MrRwOzA_G_L8Ay2D";
+  const SESSION_KEY = "pep_gia_session_token";
+  const HISTORY_DAYS = 12;
+
+  const sbAnon = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let sb = null;
+
+  // Compound rows. Ketu only shows/is completable on Sunday (fixed -- PRD.md).
+  const COMPOUNDS = [
+    { key: "kpv", column: "kpv_completed_at", name: "KPV — Skin", icon: "🧴", sub: "15 units, subQ — daily" },
+    { key: "bpc", column: "bpc_completed_at", name: "BPC — Hair", icon: "💇", sub: "15 units, subQ — daily" },
+    { key: "ketu", column: "ketu_completed_at", name: "Ketu — Body", icon: "💪", sub: "15 units, subQ — Sundays only" },
+  ];
+
+  // Local calendar date (device timezone) -- matches what gia-role RLS checks
+  // server-side (America/New_York), since Gia's phone is in Eastern time.
+  // See docs/wiki-docs/postgres-server-is-utc-app-is-eastern.md.
+  function dateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  function todayStr() { return dateStr(new Date()); }
+
+  function showStatus(el, msg, ok) {
+    el.textContent = msg;
+    el.className = "status meta-font " + (ok ? "ok" : "err");
+  }
+
+  function clientWithSession(token) {
+    return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { "x-pep-session": token } },
+    });
+  }
+
+  function unlock(token) {
+    sessionStorage.setItem(SESSION_KEY, token);
+    sb = clientWithSession(token);
+    document.getElementById("login").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    document.getElementById("todayLabel").textContent =
+      new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    loadAndRender();
+  }
+
+  function lock() {
+    sessionStorage.removeItem(SESSION_KEY);
+    sb = null;
+    document.getElementById("app").style.display = "none";
+    document.getElementById("login").style.display = "block";
+    document.getElementById("pinInput").value = "";
+    document.getElementById("pinInput").focus();
+  }
+
+  // Ketu's real schedule is still Sunday -- but Sienna confirmed 07/27/26
+  // that manual catch-up on an off day needs to work too (a missed Sunday
+  // still needs a way to log the makeup dose). So every compound always
+  // shows; renderTodayCards labels Ketu's card as a catch-up on non-Sundays
+  // instead of hiding it. See docs/decisions/2026-07-27_gia-app-browser-bridge.md.
+  function rowsForToday() {
+    return COMPOUNDS;
+  }
+
+  // Pulls up to HISTORY_DAYS days of real rows (including today) in one
+  // query, keyed by log_date, then renders both the shot-grid and the today
+  // cards from that same real data -- no fabricated/sample rows, and no
+  // column for a day before tracking existed (see below).
+  async function loadAndRender() {
+    const statusEl = document.getElementById("gridStatus");
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(today.getDate() - (HISTORY_DAYS - 1));
+
+    const { data, error } = await sb
+      .from("gia_day_log")
+      .select("log_date, kpv_completed_at, bpc_completed_at, ketu_completed_at")
+      .gte("log_date", dateStr(start))
+      .lte("log_date", dateStr(today))
+      .order("log_date", { ascending: true });
+
+    if (error) { showStatus(statusEl, "Can't load: " + error.message, false); return; }
+    showStatus(statusEl, "", true);
+
+    const byDate = {};
+    for (const row of data) byDate[row.log_date] = row;
+
+    renderShotGrid(byDate, today);
+    renderTodayCards(byDate[todayStr()] || {});
+  }
+
+  // A day only gets a grid column if a real row exists for it (something was
+  // actually tracked that day), or if it's today -- today always shows, even
+  // with nothing marked yet, since the app being live today is itself real.
+  // We're not backfilling, so a day before tracking started has no row and
+  // correctly gets no column -- an empty circle there would look identical
+  // to a real missed day, which it isn't (Sienna caught this 07/27/26).
+  function trackedDates(byDate, today) {
+    const past = Object.keys(byDate).filter(d => d !== dateStr(today)).sort();
+    const dates = past.map(d => new Date(d + "T00:00:00"));
+    dates.push(today);
+    return dates.slice(-HISTORY_DAYS);
+  }
+
+  function renderShotGrid(byDate, today) {
+    const grid = document.getElementById("shotGrid");
+    grid.innerHTML = "";
+    const dates = trackedDates(byDate, today);
+    grid.style.setProperty("--days", dates.length);
+
+    grid.appendChild(document.createElement("div")); // corner blank
+    dates.forEach(d => {
+      const h = document.createElement("div");
+      h.className = "col-head meta-font";
+      h.textContent = d.getDate();
+      grid.appendChild(h);
+    });
+
+    COMPOUNDS.forEach(def => {
+      const label = document.createElement("div");
+      label.className = "row-label meta-font";
+      label.textContent = def.icon + " " + def.name;
+      grid.appendChild(label);
+
+      dates.forEach((d, idx) => {
+        const isToday = idx === dates.length - 1;
+        const isSunday = d.getDay() === 0;
+        const key = dateStr(d);
+        const completedAt = (byDate[key] || {})[def.column];
+        const cell = document.createElement("div");
+
+        if (isToday) {
+          // Ketu is clickable every day now (manual catch-up, confirmed
+          // 07/27/26) -- Sunday is still the intended day, just no longer
+          // the only day it can be logged.
+          cell.className = "shot-cell " + (completedAt ? "today-done" : "today-pending");
+          cell.textContent = completedAt ? "✓" : "";
+          cell.addEventListener("click", () => toggleCompound(def, !!completedAt));
+        } else if (def.key === "ketu" && !isSunday && !completedAt) {
+          // Non-Sunday, nothing logged -- not expected, not a miss either.
+          cell.className = "shot-cell na";
+          cell.textContent = "–";
+        } else {
+          // Real data for this day: either the normal day, or a Ketu
+          // catch-up dose that did happen off-schedule -- both show as done.
+          cell.className = "shot-cell " + (completedAt ? "done" : "missed");
+          cell.textContent = completedAt ? "✓" : "";
+        }
+        grid.appendChild(cell);
+      });
+    });
+  }
+
+  function renderTodayCards(todayRow) {
+    const container = document.getElementById("todayCards");
+    container.innerHTML = "";
+    const rows = rowsForToday();
+    let doneCount = 0;
+
+    const isSunday = new Date().getDay() === 0;
+    rows.forEach(c => {
+      const completedAt = todayRow[c.column];
+      if (completedAt) doneCount++;
+      let sub = c.sub;
+      if (!completedAt && c.key === "ketu" && !isSunday) sub = "Manual catch-up — usually Sundays";
+      const card = document.createElement("div");
+      card.className = "card" + (completedAt ? " done" : "");
+      card.innerHTML = `
+        <div class="mark">${completedAt ? "✓" : ""}</div>
+        <div>
+          <div class="name">${c.icon} ${c.name}</div>
+          <div class="sub meta-font">${completedAt ? "Done " + new Date(completedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : sub}</div>
+        </div>`;
+      card.addEventListener("click", () => toggleCompound(c, !!completedAt));
+      container.appendChild(card);
+    });
+
+    document.getElementById("todayCount").textContent = `${doneCount}/${rows.length}`;
+  }
+
+  async function toggleCompound(c, isDone) {
+    const statusEl = document.getElementById("checklistStatus");
+    const value = isDone ? null : new Date().toISOString();
+    const { error } = await sb
+      .from("gia_day_log")
+      .upsert({ log_date: todayStr(), [c.column]: value }, { onConflict: "log_date" });
+    if (error) { showStatus(statusEl, "Not saved: " + error.message, false); return; }
+    showStatus(statusEl, "", true);
+    loadAndRender();
+  }
+
+  document.getElementById("pinForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const statusEl = document.getElementById("pinStatus");
+    const pin = document.getElementById("pinInput").value;
+    const { data, error } = await sbAnon.rpc("pep_verify_pin", { p_pin: pin });
+    if (error) { showStatus(statusEl, error.message, false); return; }
+    showStatus(statusEl, "", true);
+    unlock(data);
+  });
+
+  document.getElementById("logoutLink").addEventListener("click", lock);
+
+  const existingToken = sessionStorage.getItem(SESSION_KEY);
+  if (existingToken) unlock(existingToken);
+</script>
+
+</body>
+</html>
