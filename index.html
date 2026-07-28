@@ -75,6 +75,27 @@
   .card .name { font-weight: 700; font-size: 1.02rem; }
   .card .sub { font-size: 0.78rem; color: var(--dusk); margin-top: 2px; }
 
+  /* --- week strip + prize box (streak, pulled forward from Phase 4 --
+     pure data, doesn't need native/offline, confirmed 07/27/26) --- */
+  .week-strip { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 14px; }
+  .week-day { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+  .week-day .lbl { font-size: 10px; font-weight: 700; color: var(--dusk); }
+  .week-day .dot { width: 26px; height: 26px; border-radius: 50%; border: 2px dashed var(--line); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--line); }
+  .week-day.done .dot { border-style: solid; border-color: var(--sage-deep); background: var(--sage-deep); color: var(--paper-raised); }
+  .week-day.today .lbl { color: var(--dawn); }
+
+  .prize-box {
+    border-radius: 18px; padding: 16px; text-align: center; cursor: default;
+    border: 2px dashed var(--line); color: var(--dusk); font-size: 0.85rem;
+  }
+  .prize-box.unlocked {
+    border-style: solid; border-color: var(--dawn); cursor: pointer;
+    background: color-mix(in srgb, var(--dawn) 14%, var(--paper-raised));
+    color: var(--ink); font-weight: 700;
+  }
+  .prize-reveal { margin-top: 10px; font-size: 0.85rem; color: var(--dusk); display: none; }
+  .prize-reveal.show { display: block; }
+
   /* --- pin gate --- */
   h2 { font-size: 1.1rem; }
   input, button { font-size: 1rem; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); font-family: inherit; }
@@ -113,6 +134,11 @@
       <span class="u">today</span>
     </div>
   </div>
+
+  <div class="section-label">This week</div>
+  <div class="week-strip" id="weekStrip"></div>
+  <div class="prize-box" id="prizeBox">Full week (Mon–Sun) unlocks a prize 🎁</div>
+  <div class="prize-reveal meta-font" id="prizeReveal"></div>
 
   <div class="section-label">Your shots — last 12 days</div>
   <div class="shot-grid" id="shotGrid" style="--days: 12;"></div>
@@ -216,6 +242,54 @@
 
     renderShotGrid(byDate, today);
     renderTodayCards(byDate[todayStr()] || {});
+    renderWeekStrip(byDate, today);
+  }
+
+  // Week = Monday through Sunday, Sunday as the capstone day since that's
+  // Ketu's day (Sienna's framing, 07/27/26). A day "counts" if everything
+  // required that day is done -- KPV+BPC always, +Ketu only on Sunday (a
+  // Ketu catch-up on a weekday doesn't satisfy Sunday's requirement, it just
+  // logs separately). All 7 days counting unlocks the prize box. Reward
+  // contents are a placeholder -- Sienna's picking what actually goes there.
+  function mondayOf(d) {
+    const day = d.getDay(); // 0=Sun..6=Sat
+    const diff = day === 0 ? 6 : day - 1;
+    const m = new Date(d);
+    m.setDate(d.getDate() - diff);
+    return m;
+  }
+
+  function renderWeekStrip(byDate, today) {
+    const strip = document.getElementById("weekStrip");
+    strip.innerHTML = "";
+    const monday = mondayOf(today);
+    const labels = ["M", "T", "W", "T", "F", "S", "S"];
+    let allDone = true;
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const key = dateStr(d);
+      const row = byDate[key] || {};
+      const isSunday = d.getDay() === 0;
+      const complete = !!row.kpv_completed_at && !!row.bpc_completed_at && (!isSunday || !!row.ketu_completed_at);
+      if (!complete) allDone = false;
+
+      const cell = document.createElement("div");
+      cell.className = "week-day" + (complete ? " done" : "") + (key === dateStr(today) ? " today" : "");
+      cell.innerHTML = `<div class="lbl">${labels[i]}</div><div class="dot">${complete ? "✓" : ""}</div>`;
+      strip.appendChild(cell);
+    }
+
+    const box = document.getElementById("prizeBox");
+    const reveal = document.getElementById("prizeReveal");
+    box.className = "prize-box" + (allDone ? " unlocked" : "");
+    box.textContent = allDone ? "🎁 Full week! Tap to open" : "Full week (Mon–Sun) unlocks a prize 🎁";
+    reveal.className = "prize-reveal meta-font";
+    reveal.textContent = "";
+    box.onclick = allDone
+      ? () => { reveal.textContent = "🎉 You did the whole week! (Prize TBD — Sienna's picking what goes here.)"; reveal.classList.add("show"); }
+      : null;
   }
 
   // A day only gets a grid column if a real row exists for it (something was
