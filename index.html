@@ -108,6 +108,7 @@
     cursor: pointer;
   }
   .gift-box.opened { border-style: solid; background: color-mix(in srgb, var(--sage) 16%, var(--paper-raised)); border-color: var(--sage-deep); }
+  .gift-box.locked { opacity: 0.55; border-style: solid; background: var(--paper-raised); color: var(--line); }
   #prizeMessage { margin-top: 20px; text-align: center; font-size: 0.95rem; min-height: 1.4em; }
   .back-btn { background: none; border: none; font-size: 0.85rem; font-weight: 700; color: var(--dusk); cursor: pointer; padding: 0 0 12px; }
 
@@ -311,10 +312,13 @@
       strip.appendChild(cell);
     }
 
+    // Always tappable, even before a full week -- seeing the boxes ahead of
+    // time is the motivation, not just the reward itself (Sienna, 07/27/26:
+    // "the point is she sees it to be motivated toward it").
     const box = document.getElementById("prizeBox");
     box.className = "prize-box" + (allDone ? " unlocked" : "");
-    box.textContent = allDone ? "🎁 Full week! Tap to open" : "Full week (Mon–Sun) unlocks a prize 🎁";
-    box.onclick = allDone ? () => showPrizeView(byDate, today) : null;
+    box.textContent = allDone ? "🎁 Full week! Tap to open" : "🎁 See this week's prize";
+    box.onclick = () => showPrizeView(byDate, today, allDone);
   }
 
   // Consecutive complete days ending today (or ending yesterday if today
@@ -331,7 +335,7 @@
     return streak;
   }
 
-  function showPrizeView(byDate, today) {
+  function showPrizeView(byDate, today, allDone) {
     document.getElementById("todayView").style.display = "none";
     document.getElementById("prizeView").style.display = "block";
     document.getElementById("streakCount").textContent = currentStreak(byDate, today);
@@ -339,13 +343,18 @@
     const grid = document.getElementById("giftGrid");
     const msg = document.getElementById("prizeMessage");
     grid.innerHTML = "";
-    msg.textContent = "";
-    const GIFT_COUNT = 4; // 3-5 per Sienna's ask, 07/27/26 -- contents TBD, she's picking what goes in each later
+    // Boxes always show, even locked -- seeing them is the point (Sienna,
+    // 07/27/26). Locked ones just don't open yet.
+    msg.textContent = allDone
+      ? "Pick a box!"
+      : "Finish a full Mon–Sun week to open these.";
+    const GIFT_COUNT = 4; // 3-5 per Sienna's ask -- contents TBD, she's picking what goes in each later
     for (let i = 0; i < GIFT_COUNT; i++) {
       const box = document.createElement("div");
-      box.className = "gift-box";
-      box.textContent = "🎁";
+      box.className = "gift-box" + (allDone ? "" : " locked");
+      box.textContent = allDone ? "🎁" : "🔒";
       box.addEventListener("click", () => {
+        if (!allDone) { msg.textContent = "Not yet — finish this week first, you've got this!"; return; }
         if (box.classList.contains("opened")) return;
         box.classList.add("opened");
         box.textContent = "✨";
